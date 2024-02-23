@@ -18,11 +18,12 @@ import org.kaktor.common.commands.AutoHandledCommands
 import org.kaktor.common.commands.PoisonPill
 import org.kaktor.common.commands.RestartPill
 
-interface Ikaktor {
-    suspend fun start(): Result<Job>
-}
-
-abstract class Kaktor<T : Any> : Ikaktor {
+/**
+ * Abstract class representing an actor for message handling.
+ *
+ * @param T The type of messages this actor can handle.
+ */
+abstract class Kaktor<T : Any> {
 
     private val messageHandlingJob = SupervisorJob()
 
@@ -35,7 +36,14 @@ abstract class Kaktor<T : Any> : Ikaktor {
 
     protected val self by lazy { reference }
 
-    override suspend fun start(): Result<Job> {
+    /**
+     * Starts the actor and returns a Result object containing a Job if the actor started successfully,
+     * or a failure Result if the actor has already started or some attributes need to be set before-hand.
+     *
+     * @return A Result object containing a Job if the actor started successfully, or a failure Result with an exception.
+     * @throws IllegalStateException if some attributes need to be set before-hand.
+     */
+    internal suspend fun start(): Result<Job> {
         if (!checkIfInitialized().first) {
             throw IllegalStateException("Some attributes need to be set before-hand")
         }
@@ -75,8 +83,13 @@ abstract class Kaktor<T : Any> : Ikaktor {
         return Result.success(messageHandlingJob)
     }
 
+    /**
+     * Handles a message of type T.
+     *
+     * @param message The message to be handled.
+     * @return The result of handling the message.
+     */
     abstract suspend fun handleMessage(message: T): Any
-
 
     private suspend fun internalHandleMessage(message: AutoHandledCommands) {
         when (message) {

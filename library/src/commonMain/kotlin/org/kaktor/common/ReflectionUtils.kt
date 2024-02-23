@@ -4,6 +4,13 @@ import kotlin.reflect.KClass
 import kotlin.reflect.KParameter
 import kotlin.reflect.full.primaryConstructor
 
+/**
+ * Calls the primary constructor of the specified class with the given arguments.
+ *
+ * @param args The arguments to pass to the constructor.
+ * @return The instance created by the constructor, or null if the constructor is null or no matching parameters
+ *         are found for the given arguments.
+ */
 fun <T : Any> KClass<T>.callByArguments(vararg args: Any): T? {
     val primaryConstructor = primaryConstructor
     val arguments = args.toList()

@@ -16,6 +16,13 @@ internal val actorsMap = ConcurrentHashMap<ActorReference, ActorInformation>()
 internal val errorChannel = Channel<Any>(capacity = UNLIMITED)
 
 object KaktorManager {
+    /**
+     * Creates an actor with the given [registerInformation] and returns its reference.
+     *
+     * @param registerInformation The information used to register the actor. It should include the actor class
+     * and any startup properties required by the actor.
+     * @return The reference of the created actor.
+     */
     fun createActor(registerInformation: ActorRegisterInformation<out Any>): ActorReference {
         val actorReference = createActorReference()
         actorsRegisteredMap.putIfAbsent(actorReference, registerInformation)
@@ -28,6 +35,14 @@ object KaktorManager {
 
 }
 
+/**
+ * Sends a message of type M to the specified actor reference.
+ *
+ * @param destination The reference of the destination actor.
+ * @param message The message to be sent.
+ * @return A Result object indicating the success or failure of the operation.
+ * @throws ActorNotRegisteredException if the destination actor is not registered.
+ */
 internal suspend inline fun <reified M : Any> KaktorManager.tell(
     destination: ActorReference,
     message: M,
@@ -69,10 +84,22 @@ internal suspend inline fun <reified M : Any> KaktorManager.tell(
     return Result.success(Unit)
 }
 
+/**
+ * Sends a message to the specified actor reference.
+ *
+ * @param message The message to be sent.
+ */
 suspend fun ActorReference.tell(message: Any) {
     KaktorManager.tell(this, message)
 }
 
+/**
+ * Sends a message to the specified actor reference and waits for a response.
+ *
+ * @param message The message to be sent.
+ * @param timeout The timeout period for waiting for a response. Default is 10,000 milliseconds.
+ * @return The response received from the actor, or null if a response was not received within the timeout period.
+ */
 suspend fun ActorReference.ask(message: Any, timeout: Long = 10000): Any? {
     val answerChannel = Channel<Any>()
     val askMessage = AskCommand(message, answerChannel)

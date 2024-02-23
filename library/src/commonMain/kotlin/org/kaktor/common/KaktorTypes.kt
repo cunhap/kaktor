@@ -17,6 +17,16 @@ internal data class ActorInformation(
     val sendChannel: SendChannel<Any>
 )
 
+/**
+ * Represents the information needed to register an actor.
+ *
+ * @param M The type of the message that the actor can handle.
+ * @param actorClass The class of the actor.
+ * @param actorStartupProperties The startup properties required by the actor. If the actor has multiple constructor
+ * arguments with the same type, this will map the first property here to the first argument and so on, even if they have
+ * default values.
+ *
+ */
 class ActorRegisterInformation<M : Any>(
     val actorClass: KClass<out Kaktor<M>>,
     vararg val actorStartupProperties: Any

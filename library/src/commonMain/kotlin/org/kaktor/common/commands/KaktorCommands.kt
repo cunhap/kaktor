@@ -1,7 +1,6 @@
 package org.kaktor.common.commands
 
 import kotlinx.coroutines.channels.SendChannel
-import org.kaktor.common.ActorReference
 
 sealed interface AutoHandledCommands
 
