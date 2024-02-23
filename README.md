@@ -41,7 +41,7 @@ class MockKaktor(private val property1: Int = mockActorDefaultValue) : Kaktor<Co
 ## How to send messages to Actor
 
 After defining an actor, you need to register that actor in the system, by providing its class to the KaktorManager.
-That returns a reference to that actor and you nede to use to it send it messages. You can use the fire-and-forget method
+That returns a reference to that actor, and you need to use to it send it messages. You can use the fire-and-forget method
 of `tell` or you can send a message with `ask` and wait for an answer. Since `ask` is a `suspend function` the code will
 automatically suspend while the answer hasn't been returned.
 The `ask` method will time out after `10s` but that timeout value is customizable when calling the function.
