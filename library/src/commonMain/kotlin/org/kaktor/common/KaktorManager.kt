@@ -1,10 +1,8 @@
 package org.kaktor.common
 
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.Channel.Factory.UNLIMITED
-import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.coroutineScope
@@ -12,47 +10,6 @@ import kotlinx.coroutines.withTimeout
 import org.kaktor.common.commands.AskCommand
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.reflect.KClass
-import kotlin.reflect.KParameter
-import kotlin.reflect.full.primaryConstructor
-
-typealias ActorReference = String
-
-data class ActorNotRegisteredException(val actorReference: ActorReference) :
-    Exception("Message for actor with reference $actorReference undelivered. Actor not registered")
-
-class ActorRegisterInformation<M : Any>(
-    val actorClass: KClass<out Kaktor<M>>,
-    vararg val actorStartupProperties: Any
-) {
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is ActorRegisterInformation<*>) return false
-
-        if (actorClass != other.actorClass) return false
-        if (!actorStartupProperties.contentEquals(other.actorStartupProperties)) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = actorClass.hashCode()
-        result = 31 * result + actorStartupProperties.contentHashCode()
-        return result
-    }
-
-    override fun toString(): String {
-        return "ActorRegisterInformation(actorClass=$actorClass, actorStartupProperties=${actorStartupProperties.contentToString()})"
-    }
-}
-
-internal data class ActorInformation(
-    val reference: ActorReference,
-    val handlingJob: Job,
-    val actorInstance: Kaktor<out Any>,
-    val sendChannel: SendChannel<Any>
-)
 
 internal val actorsRegisteredMap = ConcurrentHashMap<ActorReference, ActorRegisterInformation<out Any>>()
 internal val actorsMap = ConcurrentHashMap<ActorReference, ActorInformation>()
@@ -121,7 +78,6 @@ suspend fun ActorReference.ask(message: Any, timeout: Long = 10000): Any? {
     val askMessage = AskCommand(message, answerChannel)
 
     Logger.d { "Sending message $message to actor $this with timeout $timeout and answerChannel $answerChannel" }
-    Logger.d { "Answer channel instance: ${answerChannel.printInstanceId()}" }
     this.tell(askMessage)
 
     return coroutineScope {
@@ -137,9 +93,3 @@ suspend fun ActorReference.ask(message: Any, timeout: Long = 10000): Any? {
         }
     }
 }
-
-fun Channel<Any>.printInstanceId() =
-    "Answer channel instance: ${this::class.java.name}@${Integer.toHexString(System.identityHashCode(this))}"
-
-fun SendChannel<Any>.printInstanceId() =
-    "Answer channel instance: ${this::class.java.name}@${Integer.toHexString(System.identityHashCode(this))}"

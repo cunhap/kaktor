@@ -56,7 +56,6 @@ abstract class Kaktor<T : Any> : Ikaktor {
                                 val response = handleMessage(message as T)
                                 if (it is AskCommand) {
                                     Logger.d { "Answering with response $response" }
-                                    Logger.d { "Answer channel instance when answering: ${it.answerChannel.printInstanceId()}" }
                                     it.answerChannel.trySend(response).onFailure { failSend ->
                                         Logger.e(failSend) { "I, $self, failed to answer message $response" }
                                     }
@@ -77,6 +76,7 @@ abstract class Kaktor<T : Any> : Ikaktor {
     }
 
     abstract suspend fun handleMessage(message: T): Any
+
 
     private suspend fun internalHandleMessage(message: AutoHandledCommands) {
         when (message) {
