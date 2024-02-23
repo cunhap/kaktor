@@ -8,6 +8,4 @@ sealed interface AutoHandledCommands
 data object PoisonPill: AutoHandledCommands
 data object RestartPill: AutoHandledCommands
 
-data class AskCommand<T>(val message: T, val answerChannel: SendChannel<Any>)
-
-interface Command
+data class AskCommand(val message: Any, val answerChannel: SendChannel<Any>)

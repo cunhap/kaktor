@@ -4,24 +4,48 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.Channel.Factory.UNLIMITED
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.onFailure
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeout
+import org.kaktor.common.commands.AskCommand
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
-import kotlin.reflect.full.createInstance
+import kotlin.reflect.KParameter
+import kotlin.reflect.full.primaryConstructor
 
 typealias ActorReference = String
-
-interface ActorStartupProperties
 
 data class ActorNotRegisteredException(val actorReference: ActorReference) :
     Exception("Message for actor with reference $actorReference undelivered. Actor not registered")
 
-data class ActorRegisterInformation<M : Any>(
+class ActorRegisterInformation<M : Any>(
     val actorClass: KClass<out Kaktor<M>>,
-    val actorStartupProperties: ActorStartupProperties? = null
-)
+    vararg val actorStartupProperties: Any
+) {
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ActorRegisterInformation<*>) return false
+
+        if (actorClass != other.actorClass) return false
+        if (!actorStartupProperties.contentEquals(other.actorStartupProperties)) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = actorClass.hashCode()
+        result = 31 * result + actorStartupProperties.contentHashCode()
+        return result
+    }
+
+    override fun toString(): String {
+        return "ActorRegisterInformation(actorClass=$actorClass, actorStartupProperties=${actorStartupProperties.contentToString()})"
+    }
+}
 
 internal data class ActorInformation(
     val reference: ActorReference,
@@ -36,10 +60,12 @@ internal val errorChannel = Channel<Any>(capacity = UNLIMITED)
 
 object KaktorManager {
     fun createActor(registerInformation: ActorRegisterInformation<out Any>): ActorReference {
-        val actorReference = UUID.randomUUID().toString()
+        val actorReference = createActorReference()
         actorsRegisteredMap.putIfAbsent(actorReference, registerInformation)
         return actorReference
     }
+
+    private fun createActorReference() = UUID.randomUUID().toString()
 
     fun actorExists(actorReference: ActorReference): Boolean = actorsRegisteredMap.containsKey(actorReference)
 
@@ -48,18 +74,27 @@ object KaktorManager {
 internal suspend inline fun <reified M : Any> KaktorManager.tell(
     destination: ActorReference,
     message: M,
-    sender: ActorReference? = null
 ): Result<Unit> {
     val actorChannel: SendChannel<Any> = actorsMap[destination]?.sendChannel ?: run {
         val actorRegisterInformation =
             actorsRegisteredMap[destination] ?: throw ActorNotRegisteredException(destination)
-        val (actorClass, _) = actorRegisterInformation
+        val actorClass = actorRegisterInformation.actorClass
+        val actorStartupProperties = actorRegisterInformation.actorStartupProperties
+
         val messageChannel = Channel<Any>(capacity = UNLIMITED)
 
-        val actorInstance = actorClass.createInstance().apply {
-            receiveChannel = messageChannel
-            reference = destination
+        val actorInstance = try {
+            actorClass.callByArguments(*actorStartupProperties)?.apply {
+                receiveChannel = messageChannel
+                reference = destination
+            } ?: throw IllegalArgumentException()
+        } catch (exception: Exception) {
+            Logger.e(exception) {
+                "Could not create instance of actor"
+            }
+            throw exception
         }
+
         val job = actorInstance.start().getOrThrow()
         actorsMap[destination] = ActorInformation(
             reference = destination,
@@ -77,6 +112,37 @@ internal suspend inline fun <reified M : Any> KaktorManager.tell(
     return Result.success(Unit)
 }
 
-suspend fun ActorReference.tell(message: Any, sender: ActorReference? = null) {
-    KaktorManager.tell(this, message, sender)
+suspend fun ActorReference.tell(message: Any) {
+    KaktorManager.tell(this, message)
 }
+
+suspend fun ActorReference.ask(message: Any, timeout: Long = 1000): Any? {
+    val answerChannel = Channel<Any>()
+    val askMessage = AskCommand(message, answerChannel)
+
+    Logger.d { "Sending message $message to actor $this with timeout $timeout and answerChannel $answerChannel" }
+    Logger.d { "Answer channel instance: ${answerChannel.printInstanceId()}" }
+    this.tell(askMessage)
+
+    return coroutineScope {
+        try {
+            withTimeout(timeout) {
+                answerChannel.receiveCatching().getOrNull().also {
+                    answerChannel.close()
+                }
+            }
+        } catch (exception: Exception) {
+            Logger.e { "Failed to ask message $message with timeout $timeout and answerChannel $answerChannel" }
+            null
+        }
+    }
+}
+
+fun Channel<Any>.printInstanceId() =
+    "Answer channel instance: ${this::class.java.name}@${Integer.toHexString(System.identityHashCode(this))}"
+
+fun SendChannel<Any>.printInstanceId() =
+    "Answer channel instance: ${this::class.java.name}@${Integer.toHexString(System.identityHashCode(this))}"
+
+fun ReceiveChannel<Any>.printInstanceId() =
+    "Answer channel instance: ${this::class.java.name}@${Integer.toHexString(System.identityHashCode(this))}"

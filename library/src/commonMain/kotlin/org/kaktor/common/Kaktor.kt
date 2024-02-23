@@ -8,10 +8,12 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import org.kaktor.common.commands.AskCommand
 import org.kaktor.common.commands.AutoHandledCommands
 import org.kaktor.common.commands.PoisonPill
 import org.kaktor.common.commands.RestartPill
@@ -29,7 +31,6 @@ abstract class Kaktor<T : Any> : Ikaktor {
 
     internal lateinit var receiveChannel: ReceiveChannel<Any>
     internal lateinit var answerChannel: SendChannel<Any>
-
     internal lateinit var reference: String
 
     protected val self by lazy { reference }
@@ -47,15 +48,27 @@ abstract class Kaktor<T : Any> : Ikaktor {
                     when (it) {
                         is AutoHandledCommands -> internalHandleMessage(it)
                         else -> {
-                            try{
+                            try {
+                                Logger.d { "Received message $it" }
+                                val message = if (it is AskCommand) it.message else it
+
                                 @Suppress("UNCHECKED_CAST")
-                                handleMessage(it as T)
+                                val response = handleMessage(message as T)
+                                if (it is AskCommand) {
+                                    Logger.d { "Answering with response $response" }
+                                    Logger.d { "Answer channel instance when answering: ${it.answerChannel.printInstanceId()}" }
+                                    it.answerChannel.trySend(response).onFailure { failSend ->
+                                        Logger.e(failSend) { "I, $self, failed to answer message $response" }
+                                    }
+                                }
                             } catch (exception: ClassCastException) {
                                 errorChannel.send(it)
                             }
                         }
                     }
                 }
+            }.invokeOnCompletion {
+                Logger.d(it) { "Handling coroutine for actor $self has terminated" }
             }
         }
 
@@ -63,7 +76,7 @@ abstract class Kaktor<T : Any> : Ikaktor {
         return Result.success(messageHandlingJob)
     }
 
-    abstract suspend fun handleMessage(message: T)
+    abstract suspend fun handleMessage(message: T): Any
 
     private suspend fun internalHandleMessage(message: AutoHandledCommands) {
         when (message) {
@@ -87,7 +100,8 @@ abstract class Kaktor<T : Any> : Ikaktor {
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private suspend fun stopActor() {
+    protected suspend fun stopActor() {
+        Logger.d { "Actor $self has been stopped" }
         isStarted = false
         try {
             withTimeout(10000) {

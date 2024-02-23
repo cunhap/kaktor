@@ -16,15 +16,31 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-data class TestCommand(val y: String)
+sealed interface Command
+data class TestCommand(val y: String): Command
+data class TestAskCommand(val y: String): Command
+data object AskForPropertyCommand: Command
 data class Answer(val answer: String)
 
 private val testingChannel = Channel<Any>()
 
-class MockKaktor : Kaktor<TestCommand>() {
-    override suspend fun handleMessage(message: TestCommand) {
-        Logger.i { "I'm actor with reference $self" }
-        testingChannel.send(Answer(message.y))
+private val mockActorDefaultValue = 1
+
+class MockKaktor(private val property1: Int = mockActorDefaultValue) : Kaktor<Command>() {
+    override suspend fun handleMessage(message: Command): Any {
+        Logger.i { "I'm actor with reference $self and my property is $property1" }
+        return when(message) {
+            is TestAskCommand -> {
+                val answer = "Got your answer to question ${message.y}"
+                Answer(answer)
+            }
+            is TestCommand -> {
+                testingChannel.send(Answer(message.y))
+            }
+            is AskForPropertyCommand -> {
+                property1
+            }
+        }
     }
 }
 
@@ -67,7 +83,7 @@ class KaktorManagerTest {
     fun `when a message is sent to an actor reference, it's handled by the implementation and an answer is received`() =
         runTest {
             val actorReference = KaktorManager.createActor(
-                ActorRegisterInformation(actorClass = MockKaktor::class)
+                ActorRegisterInformation(actorClass = MockKaktor::class, 4)
             )
             flow {
                 repeat(10) {
@@ -117,5 +133,55 @@ class KaktorManagerTest {
             val unregisteredActorReference = ActorReference()
             unregisteredActorReference.tell(command)
         }
+    }
+
+    @Test
+    fun `when ask method is called, response should be received from the actor`() = runTest {
+        val actorReference = KaktorManager.createActor(
+            ActorRegisterInformation(actorClass = MockKaktor::class, 5)
+        )
+
+        val command = TestAskCommand("message")
+        val response = actorReference.ask(command)
+
+        assertNotNull(response)
+        assertTrue { response is  Answer}
+        assertTrue { (response as Answer).answer == "Got your answer to question ${command.y}" }
+    }
+
+    @Test
+    fun `when asked twice but first times out, first answer should be null, second should succeed`() = runTest {
+        val actorReference = KaktorManager.createActor(
+            ActorRegisterInformation(actorClass = MockKaktor::class)
+        )
+
+        val command = TestAskCommand("message")
+        val response1 = actorReference.ask(command, 0)
+        val response2 = actorReference.ask(command)
+
+        assertNull(response1)
+        assertNotNull(response2)
+        assertTrue { response2 is  Answer}
+        assertTrue { (response2 as Answer).answer == "Got your answer to question ${command.y}" }
+    }
+
+    @Test
+    fun `when ask method is called for the property value, property should match the registration parameter`() = runTest {
+        val actorReference1 = KaktorManager.createActor(
+            ActorRegisterInformation(actorClass = MockKaktor::class, 5)
+        )
+
+        val actorReference2 = KaktorManager.createActor(
+            ActorRegisterInformation(actorClass = MockKaktor::class)
+        )
+
+        val command = AskForPropertyCommand
+        val response2 = actorReference2.ask(command)
+        val response1 = actorReference1.ask(command)
+
+        assertNotNull(response1)
+        assertNotNull(response2)
+        assertTrue { response1 == 5 }
+        assertTrue { response2 == mockActorDefaultValue }
     }
 }
