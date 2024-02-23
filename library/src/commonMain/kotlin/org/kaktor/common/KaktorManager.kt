@@ -116,7 +116,7 @@ suspend fun ActorReference.tell(message: Any) {
     KaktorManager.tell(this, message)
 }
 
-suspend fun ActorReference.ask(message: Any, timeout: Long = 1000): Any? {
+suspend fun ActorReference.ask(message: Any, timeout: Long = 10000): Any? {
     val answerChannel = Channel<Any>()
     val askMessage = AskCommand(message, answerChannel)
 
@@ -142,7 +142,4 @@ fun Channel<Any>.printInstanceId() =
     "Answer channel instance: ${this::class.java.name}@${Integer.toHexString(System.identityHashCode(this))}"
 
 fun SendChannel<Any>.printInstanceId() =
-    "Answer channel instance: ${this::class.java.name}@${Integer.toHexString(System.identityHashCode(this))}"
-
-fun ReceiveChannel<Any>.printInstanceId() =
     "Answer channel instance: ${this::class.java.name}@${Integer.toHexString(System.identityHashCode(this))}"

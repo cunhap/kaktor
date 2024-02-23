@@ -24,7 +24,7 @@ data class Answer(val answer: String)
 
 private val testingChannel = Channel<Any>()
 
-private val mockActorDefaultValue = 1
+private const val mockActorDefaultValue = 1
 
 class MockKaktor(private val property1: Int = mockActorDefaultValue) : Kaktor<Command>() {
     override suspend fun handleMessage(message: Command): Any {
