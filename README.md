@@ -110,9 +110,9 @@ we want a `Kaktor` for each `accountId`.
     }
 ```
 
-When creating a `Kaktor` then, we would pass a `ShardRegisterInformation` instead of a regular `ActorRegisterInformation`.
+When creating a `Kaktor`, we would then pass a `ShardRegisterInformation` instead of a regular `ActorRegisterInformation`.
 The main difference is that the first argument should be a reference to the sharding function of your actor.
-Afterward, you would interact with the `ActorRef` (which is now an instante of `ShardReference`) in the same way as before,
+Afterward, you would interact with the `ActorRef` (which is now an instance of `ShardReference`) in the same way as before,
 taking into account that all messages that resolve to the same output of the `shardBy` functon will be received by the same actor.
 
 ```kotlin
@@ -122,10 +122,12 @@ val actorReference = kaktorManager.createActor(
     ShardActorRegisterInformation(shardBy = AccountActor::shardByAccountId, actorClass = AccountActor::class)
 )
 
-// Account Kaktor start with a balance of 0
+// Account Kaktors start with a balance of 0
 
-val addBalanceAccount1 = AddBalance(accountId = "1", value = 10L) // Kaktor for account with id 1 gets an increment of 10
-val addBalanceAccount2 = AddBalance(accountId = "2", value = 2L) // Kaktor for account with id 2 gets an increment of 2
+// Kaktor for account with id 1 gets an increment of 10
+val addBalanceAccount1 = AddBalance(accountId = "1", value = 10L)
+// Kaktor for account with id 2 gets an increment of 2
+val addBalanceAccount2 = AddBalance(accountId = "2", value = 2L)
 
 //Notice that we use the same actorReference to send both messages
 actorReference.tell(addBalanceAccount1)
@@ -143,7 +145,8 @@ assertNotNull(accountBalance2)
 assertEquals(10L, accountBalance1 as Long)
 assertEquals(2L, accountBalance2 as Long)
 
-//Here we can see that an operation on Kaktor for account with id 1 does not interfere with the other one
+//Here we can see that an operation on Kaktor for account with id 1 
+// does not interfere with the other one
 val removeBalanceAccount1 = RemoveBalance(accountId = "1", value = 1L)
 actorReference.tell(removeBalanceAccount1)
 
