@@ -61,7 +61,7 @@ abstract class Kaktor<T : Any> {
                                 val message = if (it is AskCommand) it.message else it
 
                                 @Suppress("UNCHECKED_CAST")
-                                val response = handleMessage(message as T)
+                                val response = behaviour(message as T)
                                 if (it is AskCommand) {
                                     Logger.d { "Answering with response $response" }
                                     it.answerChannel.trySend(response).onFailure { failSend ->
@@ -89,7 +89,7 @@ abstract class Kaktor<T : Any> {
      * @param message The message to be handled.
      * @return The result of handling the message.
      */
-    abstract suspend fun handleMessage(message: T): Any
+    abstract suspend fun behaviour(message: T): Any
 
     private suspend fun internalHandleMessage(message: AutoHandledCommands) {
         when (message) {

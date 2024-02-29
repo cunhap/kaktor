@@ -20,7 +20,7 @@ class ShardingTest {
     class AccountActor : Kaktor<AccountCommand>() {
         private var balance: Long = 0
 
-        override suspend fun handleMessage(message: AccountCommand): Any {
+        override suspend fun behaviour(message: AccountCommand): Any {
             return when(message) {
                 is AddBalance -> balance += message.value
                 is RemoveBalance -> balance -= message.value

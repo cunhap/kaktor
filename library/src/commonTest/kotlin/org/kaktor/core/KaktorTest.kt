@@ -45,7 +45,7 @@ class KaktorTest {
     }
 
     @Test
-    fun `handleMessage should be called with correct message`(): Unit = runTest {
+    fun behaviour(): Unit = runTest {
         kaktor.start()
         val message = "Test"
         actorChannel.send(message)
@@ -71,7 +71,7 @@ class KaktorTest {
 
         var receivedMessage: String? = null
 
-        override suspend fun handleMessage(message: String) {
+        override suspend fun behaviour(message: String) {
             receivedMessage = message
         }
     }
