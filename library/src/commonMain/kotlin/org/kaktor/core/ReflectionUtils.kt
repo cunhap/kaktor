@@ -1,4 +1,4 @@
-package org.kaktor.common
+package org.kaktor.core
 
 import kotlin.reflect.KClass
 import kotlin.reflect.KParameter

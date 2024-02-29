@@ -1,4 +1,4 @@
-package org.kaktor.common
+package org.kaktor.core
 
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,6 +46,8 @@ class MockKaktor(private val property1: Int = mockActorDefaultValue) : Kaktor<Co
 
 class KaktorManagerTest {
 
+    private val kaktorManager = KaktorManager()
+
     @AfterTest
     fun clearManager() {
         actorsMap.clear()
@@ -54,26 +56,26 @@ class KaktorManagerTest {
 
     @Test
     fun `when an actor is created, it's saved on the manager map`() = runTest {
-        val actorReference = KaktorManager.createActor(
+        val actorReference = kaktorManager.createActor(
             ActorRegisterInformation(actorClass = MockKaktor::class)
         )
 
-        assertTrue { KaktorManager.actorExists(actorReference) }
+        assertTrue { kaktorManager.actorExists(actorReference) }
     }
 
     @Test
     fun `when an actor is attempted to be created again, it returns a new reference`() = runTest {
-        val actorReference1 = KaktorManager.createActor(
+        val actorReference1 = kaktorManager.createActor(
             ActorRegisterInformation(actorClass = MockKaktor::class)
         )
 
-        val actorReference2 = KaktorManager.createActor(
+        val actorReference2 = kaktorManager.createActor(
             ActorRegisterInformation(actorClass = MockKaktor::class)
         )
 
         assertTrue {
-            KaktorManager.actorExists(actorReference1)
-            KaktorManager.actorExists(actorReference2)
+            kaktorManager.actorExists(actorReference1)
+            kaktorManager.actorExists(actorReference2)
             actorReference1 != actorReference2
         }
     }
@@ -82,7 +84,7 @@ class KaktorManagerTest {
     @Test
     fun `when a message is sent to an actor reference, it's handled by the implementation and an answer is received`() =
         runTest {
-            val actorReference = KaktorManager.createActor(
+            val actorReference = kaktorManager.createActor(
                 ActorRegisterInformation(actorClass = MockKaktor::class, 4)
             )
             flow {
@@ -106,7 +108,7 @@ class KaktorManagerTest {
 
     @Test
     fun `when a message is sent that that actor doesn't recognize, it should be sent to error channel`() = runTest {
-        val actorReference = KaktorManager.createActor(
+        val actorReference = kaktorManager.createActor(
             ActorRegisterInformation(actorClass = MockKaktor::class)
         )
 
@@ -130,14 +132,14 @@ class KaktorManagerTest {
     fun `when a message is sent to an unregistered actor, should throw ActorNotRegisteredException`() = runTest {
         assertFailsWith<ActorNotRegisteredException> {
             val command = TestCommand("message")
-            val unregisteredActorReference = ActorReference()
+            val unregisteredActorReference = ActorReference(kaktorManager, "")
             unregisteredActorReference.tell(command)
         }
     }
 
     @Test
     fun `when ask method is called, response should be received from the actor`() = runTest {
-        val actorReference = KaktorManager.createActor(
+        val actorReference = kaktorManager.createActor(
             ActorRegisterInformation(actorClass = MockKaktor::class, 5)
         )
 
@@ -151,7 +153,7 @@ class KaktorManagerTest {
 
     @Test
     fun `when asked twice but first times out, first answer should be null, second should succeed`() = runTest {
-        val actorReference = KaktorManager.createActor(
+        val actorReference = kaktorManager.createActor(
             ActorRegisterInformation(actorClass = MockKaktor::class)
         )
 
@@ -167,11 +169,11 @@ class KaktorManagerTest {
 
     @Test
     fun `when ask method is called for the property value, property should match the registration parameter`() = runTest {
-        val actorReference1 = KaktorManager.createActor(
+        val actorReference1 = kaktorManager.createActor(
             ActorRegisterInformation(actorClass = MockKaktor::class, 5)
         )
 
-        val actorReference2 = KaktorManager.createActor(
+        val actorReference2 = kaktorManager.createActor(
             ActorRegisterInformation(actorClass = MockKaktor::class)
         )
 

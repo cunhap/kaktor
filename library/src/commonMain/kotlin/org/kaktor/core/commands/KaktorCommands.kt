@@ -1,4 +1,4 @@
-package org.kaktor.common.commands
+package org.kaktor.core.commands
 
 import kotlinx.coroutines.channels.SendChannel
 

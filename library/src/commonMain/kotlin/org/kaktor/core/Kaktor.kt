@@ -1,4 +1,4 @@
-package org.kaktor.common
+package org.kaktor.core
 
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -13,10 +13,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
-import org.kaktor.common.commands.AskCommand
-import org.kaktor.common.commands.AutoHandledCommands
-import org.kaktor.common.commands.PoisonPill
-import org.kaktor.common.commands.RestartPill
+import org.kaktor.core.commands.AskCommand
+import org.kaktor.core.commands.AutoHandledCommands
+import org.kaktor.core.commands.PoisonPill
+import org.kaktor.core.commands.RestartPill
 
 /**
  * Abstract class representing an actor for message handling.
@@ -32,7 +32,7 @@ abstract class Kaktor<T : Any> {
 
     internal lateinit var receiveChannel: ReceiveChannel<Any>
     internal lateinit var answerChannel: SendChannel<Any>
-    internal lateinit var reference: String
+    internal lateinit var reference: ActorRef
 
     protected val self by lazy { reference }
 
