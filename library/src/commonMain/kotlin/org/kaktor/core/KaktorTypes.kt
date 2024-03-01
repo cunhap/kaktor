@@ -53,8 +53,8 @@ data class ActorRegisterInformation<M : Any>(
 ) : RegisterInformation<M>
 
 data class ShardActorRegisterInformation<M: Any>(
-    val shardBy: (M) -> String,
     override val actorClass: KClass<out Kaktor<M>>,
+    val shardBy: (M) -> String,
     override val passivation: Long? = null,
     override val actorStartupProperties: List<Any> = emptyList()
 ) : RegisterInformation<M>

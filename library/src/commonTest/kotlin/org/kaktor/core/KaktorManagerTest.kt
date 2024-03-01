@@ -1,8 +1,6 @@
 package org.kaktor.core
 
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.toList
@@ -15,34 +13,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-
-sealed interface Command
-data class TestCommand(val y: String): Command
-data class TestAskCommand(val y: String): Command
-data object AskForPropertyCommand: Command
-data class Answer(val answer: String)
-
-private val testingChannel = Channel<Any>()
-
-private const val mockActorDefaultValue = 1
-
-class MockKaktor(private val property1: Int = mockActorDefaultValue) : Kaktor<Command>() {
-    override suspend fun behaviour(message: Command): Any {
-        Logger.i { "I'm actor with reference $self and my property is $property1" }
-        return when(message) {
-            is TestAskCommand -> {
-                val answer = "Got your answer to question ${message.y}"
-                Answer(answer)
-            }
-            is TestCommand -> {
-                testingChannel.send(Answer(message.y))
-            }
-            is AskForPropertyCommand -> {
-                property1
-            }
-        }
-    }
-}
 
 class KaktorManagerTest {
 

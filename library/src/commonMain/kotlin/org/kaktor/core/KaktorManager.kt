@@ -1,17 +1,14 @@
 package org.kaktor.core
 
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.Channel.Factory.UNLIMITED
-import kotlinx.coroutines.channels.onFailure
-import kotlinx.coroutines.channels.onSuccess
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import org.kaktor.core.commands.AskCommand
 import org.kaktor.core.commands.PoisonPill
 import java.util.UUID
@@ -30,7 +27,10 @@ data class KaktorManagerSettings(
     val shardedActorsPassivationTime: Long? = DEFAULT_KAKTOR_PASSIVATION,
 )
 
-class KaktorManager(private val settings: KaktorManagerSettings = KaktorManagerSettings()) {
+class KaktorManager(
+    private val settings: KaktorManagerSettings = KaktorManagerSettings(),
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default
+) {
     /**
      * Creates an actor with the given [registerInformation] and returns its reference.
      *
@@ -40,7 +40,11 @@ class KaktorManager(private val settings: KaktorManagerSettings = KaktorManagerS
      */
     fun createActor(registerInformation: RegisterInformation<out Any>): ActorRef {
         val actorReference = when (registerInformation) {
-            is ShardActorRegisterInformation<out Any> -> ShardReference(this, "${registerInformation.actorClass}")
+            is ShardActorRegisterInformation<out Any> -> ShardReference(
+                this,
+                "${registerInformation.actorClass.qualifiedName}"
+            )
+
             else -> ActorReference(this, UUID.randomUUID().toString())
         }
         actorsRegisteredMap.putIfAbsent(actorReference, registerInformation)
@@ -54,16 +58,16 @@ class KaktorManager(private val settings: KaktorManagerSettings = KaktorManagerS
         message: M,
         destination: ActorRef
     ): ActorInformation {
-        val actor: ActorInformation = when (actorRegisterInformation) {
-            is ShardActorRegisterInformation<*> -> {
+        val actor: ActorInformation = when (destination) {
+            is ShardReference -> {
+                @Suppress("UNCHECKED_CAST")
+                val shardActorReference = actorRegisterInformation as ShardActorRegisterInformation<M>
                 try {
                     val actualMessage = if (message is AskCommand) {
-                        message.message
+                        @Suppress("UNCHECKED_CAST")
+                        message.message as M
                     } else message
-
-                    @Suppress("UNCHECKED_CAST")
-                    val shardedDestination =
-                        (actorRegisterInformation as ShardActorRegisterInformation<M>).shardBy(actualMessage as M)
+                    val shardedDestination = getShardKey(destination, actualMessage, shardActorReference)
                     actorsMap[shardedDestination]
                 } catch (e: Exception) {
                     Logger.e(e) { "Could not create instance of actor" }
@@ -101,11 +105,14 @@ class KaktorManager(private val settings: KaktorManagerSettings = KaktorManagerS
         @Suppress("UNCHECKED_CAST")
         val actorMapKey = when (destination) {
             is ActorReference -> destination.reference
-            is ShardReference -> (actorRegisterInformation as ShardActorRegisterInformation<T>).shardBy((message as T))
+            is ShardReference -> getShardKey(
+                destination,
+                message as T,
+                actorRegisterInformation as ShardActorRegisterInformation
+            )
         }
 
         val job = actorInstance.start().getOrThrow()
-        setupPassivation(actorMapKey, actorRegisterInformation.passivation, destination)
 
         return ActorInformation(
             reference = destination,
@@ -127,13 +134,25 @@ class KaktorManager(private val settings: KaktorManagerSettings = KaktorManagerS
         }
     }
 
-    private fun passivationJob(actorMapKey: String, ttl: Long): Job = CoroutineScope(Dispatchers.Default).launch {
+    private fun passivationJob(actorMapKey: String, ttl: Long): Job = CoroutineScope(dispatcher).launch {
         val actor = actorsMap[actorMapKey] ?: return@launch
         delay(ttl)
         actor.sendChannel.trySend(PoisonPill)
         while (actor.actorInstance.isStarted) {
-            delay(10)
+            delay(1)
         }
         actorsMap.remove(actorMapKey)
+    }
+
+    private fun <T : Any> getShardKey(
+        shardReference: ShardReference,
+        message: T,
+        shardActorRegisterInformation: ShardActorRegisterInformation<T>
+    ): String {
+        return "${shardReference.reference}:${
+            shardActorRegisterInformation.shardBy(
+                message
+            )
+        }"
     }
 }
