@@ -11,10 +11,11 @@ kotlin {
         publishLibraryVariants("release")
         compilations.all {
             kotlinOptions {
-                jvmTarget = "21"
+                jvmTarget = "1.8"
             }
         }
     }
+//    js()
 //    iosX64()
 //    iosArm64()
 //    iosSimulatorArm64()
@@ -35,11 +36,6 @@ kotlin {
                 implementation(kotlin("test-junit"))
                 implementation(libs.kotlix.coroutines.test)
                 implementation(libs.mockk)
-            }
-        }
-        val androidMain by getting {
-            dependencies {
-                implementation(libs.kotlinx.coroutines.android)
             }
         }
     }
