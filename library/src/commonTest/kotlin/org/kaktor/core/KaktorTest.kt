@@ -1,13 +1,9 @@
 package org.kaktor.core
 
-import io.mockk.mockk
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.kaktor.core.commands.PoisonPill
-import org.kaktor.core.ActorReference
-import org.kaktor.core.Kaktor
-import org.kaktor.core.KaktorManager
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,7 +19,7 @@ class KaktorTest {
     fun setup() {
         kaktor = TestKaktor()
         kaktor.receiveChannel = actorChannel
-        kaktor.reference = ActorReference(mockk<KaktorManager>(), "Test")
+        kaktor.reference = ActorReference(KaktorManager(), "test")
     }
 
     @Test
@@ -45,7 +41,7 @@ class KaktorTest {
     }
 
     @Test
-    fun `handleMessage should be called with correct message`(): Unit = runTest {
+    fun behaviour(): Unit = runTest {
         kaktor.start()
         val message = "Test"
         actorChannel.send(message)
@@ -71,7 +67,7 @@ class KaktorTest {
 
         var receivedMessage: String? = null
 
-        override suspend fun handleMessage(message: String) {
+        override suspend fun behaviour(message: String) {
             receivedMessage = message
         }
     }

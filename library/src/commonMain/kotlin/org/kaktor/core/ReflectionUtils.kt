@@ -11,15 +11,14 @@ import kotlin.reflect.full.primaryConstructor
  * @return The instance created by the constructor, or null if the constructor is null or no matching parameters
  *         are found for the given arguments.
  */
-fun <T : Any> KClass<T>.callByArguments(vararg args: Any): T? {
+fun <T : Any> KClass<T>.callByArguments(args: List<Any>): T? {
     val primaryConstructor = primaryConstructor
-    val arguments = args.toList()
 
     return primaryConstructor?.let {
         val parameterNames = mutableListOf<Pair<KParameter, Any>>()
         val parameterList = primaryConstructor.parameters.toMutableList()
 
-        for (obj in arguments) {
+        for (obj in args) {
             val matchingParameter = parameterList.firstOrNull { it.type.classifier == obj::class }
             if (matchingParameter != null) {
                 parameterNames.add(matchingParameter to obj)
@@ -28,5 +27,15 @@ fun <T : Any> KClass<T>.callByArguments(vararg args: Any): T? {
         }
 
         return primaryConstructor.callBy(parameterNames.toMap())
+    }
+}
+
+fun <T: Any> KClass<T>.callByMap(args: Map<String, Any>): T? {
+    val primaryConstructor = primaryConstructor
+    return primaryConstructor?.let {
+        val parameters = it.parameters.associateBy { p -> p.name }.filterKeys { pName-> pName != null }
+        val argumentsMap = args.mapKeys { (key, _) -> parameters[key] ?: throw NoSuchElementException() }
+
+        primaryConstructor.callBy(argumentsMap)
     }
 }

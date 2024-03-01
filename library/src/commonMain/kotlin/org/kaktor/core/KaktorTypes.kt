@@ -3,6 +3,7 @@ package org.kaktor.core
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.SendChannel
 import kotlin.reflect.KClass
+import kotlin.time.Duration
 
 sealed interface ActorRef {
     val kActorManager: KaktorManager
@@ -25,10 +26,16 @@ internal data class ActorInformation(
     val reference: ActorRef,
     val handlingJob: Job,
     val actorInstance: Kaktor<out Any>,
-    val sendChannel: SendChannel<Any>
+    val sendChannel: SendChannel<Any>,
+    val mappedKey: String,
 )
 
-sealed interface RegisterInformation
+sealed interface RegisterInformation<M: Any>{
+    val actorClass: KClass<out Kaktor<M>>
+    val passivation: Long?
+    val actorStartupProperties: List<Any>
+}
+
 /**
  * Represents the information needed to register an actor.
  *
@@ -39,36 +46,16 @@ sealed interface RegisterInformation
  * default values.
  *
  */
-open class ActorRegisterInformation<M : Any>(
-    open val actorClass: KClass<out Kaktor<M>>,
-    open vararg val actorStartupProperties: Any
-) : RegisterInformation {
+data class ActorRegisterInformation<M : Any>(
+    override val actorClass: KClass<out Kaktor<M>>,
+    override val passivation: Long? = null,
+    override val actorStartupProperties: List<Any> = emptyList(),
+) : RegisterInformation<M>
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is ActorRegisterInformation<*>) return false
-
-        if (actorClass != other.actorClass) return false
-        if (!actorStartupProperties.contentEquals(other.actorStartupProperties)) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = actorClass.hashCode()
-        result = 31 * result + actorStartupProperties.contentHashCode()
-        return result
-    }
-
-    override fun toString(): String {
-        return "ActorRegisterInformation(actorClass=$actorClass, actorStartupProperties=${actorStartupProperties.contentToString()})"
-    }
-}
-
-class ShardActorRegisterInformation<M: Any>(
+data class ShardActorRegisterInformation<M: Any>(
+    override val actorClass: KClass<out Kaktor<M>>,
     val shardBy: (M) -> String,
-    actorClass: KClass<out Kaktor<M>>,
-    vararg actorStartupProperties: Any
-) : ActorRegisterInformation<M>(
-    actorClass, actorStartupProperties
-)
+    override val passivation: Long? = null,
+    override val actorStartupProperties: List<Any> = emptyList()
+) : RegisterInformation<M>
+
