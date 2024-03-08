@@ -19,7 +19,11 @@ kotlin {
 //    iosX64()
 //    iosArm64()
 //    iosSimulatorArm64()
-//    linuxX64()
+//    iosX64 {
+//        binaries.framework {
+//            baseName = "common"
+//        }
+//    }
 
     sourceSets {
         val commonMain by getting {
@@ -28,6 +32,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kermit.logging)
                 implementation(libs.kotlin.reflect)
+                implementation("app.softwork:kotlinx-uuid-core:0.0.22")
             }
         }
         val commonTest by getting {
@@ -35,9 +40,13 @@ kotlin {
                 implementation(libs.kotlin.test)
                 implementation(kotlin("test-junit"))
                 implementation(libs.kotlix.coroutines.test)
-                implementation(libs.mockk)
             }
         }
+//        val iosMain by getting {
+//            dependencies {
+//                implementation(libs.kotlinx.coroutines.core.ios.arm.x64)
+//            }
+//        }
     }
 }
 

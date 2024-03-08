@@ -9,16 +9,14 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.Channel.Factory.UNLIMITED
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.uuid.UUID
 import org.kaktor.core.commands.AskCommand
 import org.kaktor.core.commands.PoisonPill
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
-
-internal val actorsRegisteredMap = ConcurrentHashMap<ActorRef, RegisterInformation<out Any>>()
-internal val actorsMap = ConcurrentHashMap<String, ActorInformation>()
+internal expect val actorsRegisteredMap: MutableMap<ActorRef, RegisterInformation<out Any>>
+internal expect val actorsMap: MutableMap<String, ActorInformation>
 internal val errorChannel = Channel<Any>(capacity = UNLIMITED)
-internal val actorsPassivationJobs = ConcurrentHashMap<String, Job>()
+internal expect val actorsPassivationJobs: MutableMap<String, Job>
 
 private val DEFAULT_KAKTOR_PASSIVATION: Long? = null
 
@@ -42,12 +40,12 @@ class KaktorManager(
         val actorReference = when (registerInformation) {
             is ShardActorRegisterInformation<out Any> -> ShardReference(
                 this,
-                "${registerInformation.actorClass.qualifiedName}"
+                "${registerInformation.actorClass.simpleName}"
             )
 
-            else -> ActorReference(this, UUID.randomUUID().toString())
+            else -> ActorReference(this, UUID().toString())
         }
-        actorsRegisteredMap.putIfAbsent(actorReference, registerInformation)
+        if (!actorsRegisteredMap.containsKey(actorReference)) actorsRegisteredMap[actorReference] = registerInformation
         return actorReference
     }
 
@@ -85,16 +83,15 @@ class KaktorManager(
         actorRegisterInformation: RegisterInformation<T>,
         message: Any,
     ): ActorInformation {
-        val actorClass = actorRegisterInformation.actorClass
-        val actorStartupProperties = actorRegisterInformation.actorStartupProperties
+        val instanceBuilder = actorRegisterInformation.actorInstanceBuilder
 
         val messageChannel = Channel<Any>(capacity = UNLIMITED)
 
         val actorInstance = try {
-            actorClass.callByArguments(actorStartupProperties)?.apply {
+            instanceBuilder().apply {
                 receiveChannel = messageChannel
                 reference = destination
-            } ?: throw IllegalArgumentException()
+            }
         } catch (exception: Exception) {
             Logger.e(exception) {
                 "Could not create instance of actor"

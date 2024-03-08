@@ -27,7 +27,9 @@ class KaktorManagerTest {
     @Test
     fun `when an actor is created, it's saved on the manager map`() = runTest {
         val actorReference = kaktorManager.createActor(
-            ActorRegisterInformation(actorClass = MockKaktor::class)
+            ActorRegisterInformation(actorClass = MockKaktor::class) {
+                MockKaktor()
+            }
         )
 
         assertTrue { kaktorManager.actorExists(actorReference) }
@@ -36,11 +38,15 @@ class KaktorManagerTest {
     @Test
     fun `when an actor is attempted to be created again, it returns a new reference`() = runTest {
         val actorReference1 = kaktorManager.createActor(
-            ActorRegisterInformation(actorClass = MockKaktor::class)
+            ActorRegisterInformation(actorClass = MockKaktor::class) {
+                MockKaktor()
+            }
         )
 
         val actorReference2 = kaktorManager.createActor(
-            ActorRegisterInformation(actorClass = MockKaktor::class)
+            ActorRegisterInformation(actorClass = MockKaktor::class) {
+                MockKaktor()
+            }
         )
 
         assertTrue {
@@ -55,7 +61,9 @@ class KaktorManagerTest {
     fun `when a message is sent to an actor reference, it's handled by the implementation and an answer is received`() =
         runTest {
             val actorReference = kaktorManager.createActor(
-                ActorRegisterInformation(actorClass = MockKaktor::class, actorStartupProperties = listOf(4))
+                ActorRegisterInformation(actorClass = MockKaktor::class) {
+                    MockKaktor(property1 = 4)
+                }
             )
             flow {
                 repeat(10) {
@@ -79,7 +87,9 @@ class KaktorManagerTest {
     @Test
     fun `when a message is sent that that actor doesn't recognize, it should be sent to error channel`() = runTest {
         val actorReference = kaktorManager.createActor(
-            ActorRegisterInformation(actorClass = MockKaktor::class)
+            ActorRegisterInformation(actorClass = MockKaktor::class) {
+                MockKaktor()
+            }
         )
 
         val command = "Hello world error"
@@ -110,21 +120,25 @@ class KaktorManagerTest {
     @Test
     fun `when ask method is called, response should be received from the actor`() = runTest {
         val actorReference = kaktorManager.createActor(
-            ActorRegisterInformation(actorClass = MockKaktor::class, actorStartupProperties = listOf(5))
+            ActorRegisterInformation(actorClass = MockKaktor::class) {
+                MockKaktor(5)
+            }
         )
 
         val command = TestAskCommand("message")
         val response = actorReference.ask(command)
 
         assertNotNull(response)
-        assertTrue { response is  Answer}
+        assertTrue { response is Answer }
         assertTrue { (response as Answer).answer == "Got your answer to question ${command.y}" }
     }
 
     @Test
     fun `when asked twice but first times out, first answer should be null, second should succeed`() = runTest {
         val actorReference = kaktorManager.createActor(
-            ActorRegisterInformation(actorClass = MockKaktor::class)
+            ActorRegisterInformation(actorClass = MockKaktor::class) {
+                MockKaktor(4)
+            }
         )
 
         val command = TestAskCommand("message")
@@ -133,27 +147,32 @@ class KaktorManagerTest {
 
         assertNull(response1)
         assertNotNull(response2)
-        assertTrue { response2 is  Answer}
+        assertTrue { response2 is Answer }
         assertTrue { (response2 as Answer).answer == "Got your answer to question ${command.y}" }
     }
 
     @Test
-    fun `when ask method is called for the property value, property should match the registration parameter`() = runTest {
-        val actorReference1 = kaktorManager.createActor(
-            ActorRegisterInformation(actorClass = MockKaktor::class, actorStartupProperties = listOf(5))
-        )
+    fun `when ask method is called for the property value, property should match the registration parameter`() =
+        runTest {
+            val actorReference1 = kaktorManager.createActor(
+                ActorRegisterInformation(actorClass = MockKaktor::class) {
+                    MockKaktor(5)
+                }
+            )
 
-        val actorReference2 = kaktorManager.createActor(
-            ActorRegisterInformation(actorClass = MockKaktor::class)
-        )
+            val actorReference2 = kaktorManager.createActor(
+                ActorRegisterInformation(actorClass = MockKaktor::class) {
+                    MockKaktor()
+                }
+            )
 
-        val command = AskForPropertyCommand
-        val response2 = actorReference2.ask(command)
-        val response1 = actorReference1.ask(command)
+            val command = AskForPropertyCommand
+            val response2 = actorReference2.ask(command)
+            val response1 = actorReference1.ask(command)
 
-        assertNotNull(response1)
-        assertNotNull(response2)
-        assertTrue { response1 == 5 }
-        assertTrue { response2 == mockActorDefaultValue }
-    }
+            assertNotNull(response1)
+            assertNotNull(response2)
+            assertTrue { response1 == 5 }
+            assertTrue { response2 == mockActorDefaultValue }
+        }
 }

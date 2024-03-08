@@ -10,12 +10,13 @@ import kotlin.test.assertTrue
 
 class PassivationTest {
 
-    private val accountActorRegisterInformation = ShardActorRegisterInformation<AccountCommand>(
+    private val accountActorRegisterInformation = ShardActorRegisterInformation(
         shardBy = AccountActor::shardByAccountId,
         actorClass = AccountActor::class,
         passivation = 50,
-        actorStartupProperties = listOf()
-    )
+    ) {
+        AccountActor()
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
@@ -26,7 +27,7 @@ class PassivationTest {
             val accountActors = kaktorManager.createActor(accountActorRegisterInformation)
 
             val addBalanceCommand = AddBalance("account1", 10L)
-            val actorKey = "${AccountActor::class.qualifiedName}:account1"
+            val actorKey = "${AccountActor::class.simpleName}:account1"
             accountActors.tell(addBalanceCommand)
             advanceTimeBy(10)
             assertTrue { actorsMap.containsKey(actorKey) }
@@ -45,7 +46,7 @@ class PassivationTest {
             val accountActors = kaktorManager.createActor(accountActorRegisterInformation)
 
             val addBalanceCommand = AddBalance("account1", 10L)
-            val actorKey = "${AccountActor::class.qualifiedName}:account1"
+            val actorKey = "${AccountActor::class.simpleName}:account1"
 
             accountActors.tell(addBalanceCommand)
             val actorInstance = actorsMap[actorKey]!!.actorInstance

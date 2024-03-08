@@ -33,7 +33,7 @@ internal data class ActorInformation(
 sealed interface RegisterInformation<M: Any>{
     val actorClass: KClass<out Kaktor<M>>
     val passivation: Long?
-    val actorStartupProperties: List<Any>
+    val actorInstanceBuilder: () -> Kaktor<M>
 }
 
 /**
@@ -49,13 +49,13 @@ sealed interface RegisterInformation<M: Any>{
 data class ActorRegisterInformation<M : Any>(
     override val actorClass: KClass<out Kaktor<M>>,
     override val passivation: Long? = null,
-    override val actorStartupProperties: List<Any> = emptyList(),
+    override val actorInstanceBuilder: () -> Kaktor<M>,
 ) : RegisterInformation<M>
 
 data class ShardActorRegisterInformation<M: Any>(
     override val actorClass: KClass<out Kaktor<M>>,
     val shardBy: (M) -> String,
     override val passivation: Long? = null,
-    override val actorStartupProperties: List<Any> = emptyList()
+    override val actorInstanceBuilder: () -> Kaktor<M>,
 ) : RegisterInformation<M>
 

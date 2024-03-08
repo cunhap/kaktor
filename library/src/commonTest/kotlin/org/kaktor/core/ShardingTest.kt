@@ -19,7 +19,9 @@ class ShardingTest {
     @Test
     fun `should send message to the same actor based on sharding function`() = runTest {
         val actorReference = kaktorManager.createActor(
-            ShardActorRegisterInformation(shardBy = AccountActor::shardByAccountId, actorClass = AccountActor::class)
+            ShardActorRegisterInformation(shardBy = AccountActor::shardByAccountId, actorClass = AccountActor::class) {
+                    AccountActor()
+            }
         )
 
         val addBalanceAccount1 = AddBalance(accountId = "1", value = 10L)
