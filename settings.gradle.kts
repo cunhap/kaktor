@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "kaktor"
-include(":library")
+include(":kaktor")

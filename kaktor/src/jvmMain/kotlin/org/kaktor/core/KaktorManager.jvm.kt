@@ -1,7 +1,6 @@
 package org.kaktor.core
 
 import kotlinx.coroutines.Job
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 internal actual val actorsRegisteredMap: MutableMap<ActorRef, RegisterInformation<out Any>> = ConcurrentHashMap()

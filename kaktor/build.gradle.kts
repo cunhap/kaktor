@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
     id("module.publication")
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -11,7 +12,7 @@ kotlin {
         publishLibraryVariants("release")
         compilations.all {
             kotlinOptions {
-                jvmTarget = "1.8"
+                jvmTarget = "11"
             }
         }
     }
@@ -32,7 +33,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kermit.logging)
                 implementation(libs.kotlin.reflect)
-                implementation("app.softwork:kotlinx-uuid-core:0.0.22")
+                implementation(libs.kotlinx.uuid.core)
             }
         }
         val commonTest by getting {
@@ -42,6 +43,17 @@ kotlin {
                 implementation(libs.kotlix.coroutines.test)
             }
         }
+        val jvmMain by getting {
+            dependencies {
+                implementation(libs.kotlinx.serialization.protobuf)
+                implementation(libs.ktor.client.core)
+                implementation(libs.ktor.server.core)
+                implementation(libs.ktor.network)
+                implementation(libs.ktor.network.tls)
+                implementation(libs.logback.classic)
+            }
+        }
+
 //        val iosMain by getting {
 //            dependencies {
 //                implementation(libs.kotlinx.coroutines.core.ios.arm.x64)
