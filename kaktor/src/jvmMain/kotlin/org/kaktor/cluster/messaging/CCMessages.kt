@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
 
 @Serializable
-sealed interface CCNodeMessage {
+sealed interface ClusterCommand {
     val clusterName: String
     val memberName: String
 }
@@ -18,7 +18,7 @@ data class Join(
     override val clusterName: String,
     @ProtoNumber(2)
     override val memberName: String
-) : CCNodeMessage
+) : ClusterCommand
 
 @Serializable
 data class Leave(
@@ -26,7 +26,7 @@ data class Leave(
     override val clusterName: String,
     @ProtoNumber(2)
     override val memberName: String
-) : CCNodeMessage
+) : ClusterCommand
 
 @Serializable
 data class HealthCheckResponse(
@@ -34,7 +34,7 @@ data class HealthCheckResponse(
     override val clusterName: String,
     @ProtoNumber(2)
     override val memberName: String
-) : CCNodeMessage
+) : ClusterCommand
 
 @Serializable
 sealed interface CCManagerMessage {

@@ -61,8 +61,6 @@ class KaktorTest {
         assertFalse(kaktor.isStarted, "Actor should not be active after PoisonPill")
     }
 
-    // You can add more tests for other cases based on your code
-
     private class TestKaktor: Kaktor<String>() {
 
         var receivedMessage: String? = null

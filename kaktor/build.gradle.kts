@@ -12,11 +12,20 @@ kotlin {
         publishLibraryVariants("release")
         compilations.all {
             kotlinOptions {
-                jvmTarget = "11"
+                jvmTarget = "1.8"
             }
         }
     }
-//    js()
+//    js {
+//        nodejs()
+//        browser {
+//            testTask {
+//                useKarma {
+//                    useChromeHeadless()
+//                }
+//            }
+//        }
+//    }
 //    iosX64()
 //    iosArm64()
 //    iosSimulatorArm64()
@@ -53,7 +62,6 @@ kotlin {
                 implementation(libs.logback.classic)
             }
         }
-
 //        val iosMain by getting {
 //            dependencies {
 //                implementation(libs.kotlinx.coroutines.core.ios.arm.x64)
