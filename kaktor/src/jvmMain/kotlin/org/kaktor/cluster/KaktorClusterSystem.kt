@@ -5,24 +5,23 @@ package org.kaktor.cluster
 import co.touchlab.kermit.Logger
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
+import io.ktor.util.network.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.serialization.*
 import kotlinx.serialization.protobuf.ProtoBuf
 import kotlinx.serialization.protobuf.ProtoNumber
-import org.kaktor.cluster.messaging.ClusterCommand
-import org.kaktor.cluster.messaging.HealthCheckResponse
-import org.kaktor.cluster.messaging.Join
-import org.kaktor.cluster.messaging.Leave
+import kotlinx.uuid.UUID
+import org.kaktor.cluster.messaging.*
 import org.kaktor.core.KaktorManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
-import kotlin.reflect.KClass
 
 internal const val listenPortDefault = 20829
 
 data class KaktorClusterConfigs(
-    val msgPort: Int = listenPortDefault,
+    val listenPort: Int = listenPortDefault,
     val clusterHosts: List<SocketAddress>,
     val clusterName: String,
     val memberName: String,
@@ -34,8 +33,6 @@ internal sealed interface Message
 @Serializable
 internal data class Envelope(
     @ProtoNumber(0)
-    val type: KClass<out Message>,
-    @ProtoNumber(1)
     val message: Message,
 )
 
@@ -61,22 +58,32 @@ class KaktorClusterSystem(
     private lateinit var serverSocket: ServerSocket
     private val clusterNodesSockets = ConcurrentHashMap<SocketAddress, RemoteNode>()
     var launcherJob: Job
+    private var listening: Boolean = false
 
     init {
-        Logger.i { "Iniciating Node" }
+        Logger.i { "Initiating Node" }
         launcherJob =
             launch {
-                serverSocket = aSocket(selectorManager).tcp().bind(port = clusterConfigs.msgPort)
+                serverSocket = aSocket(selectorManager).tcp().bind(port = clusterConfigs.listenPort)
                 Logger.i { "Created server socket listening on port ${serverSocket.localAddress}" }
-                initiateListener()
+                launch {
+                    initiateCCListener()
+                }
+                while (!listening) {
+                    delay(100)
+                }
                 clusterConfigs.clusterHosts
                     .map {
                         async {
                             try {
+                                if (it.toJavaAddress().port == serverSocket.localAddress.toJavaAddress().port) {
+                                    return@async null
+                                }
+                                Logger.i("Connecting to $it")
                                 val socket = aSocket(selectorManager).tcp().connect(it)
                                 RemoteNode(socket, socket.openWriteChannel(autoFlush = true))
                             } catch (exception: Exception) {
-                                Logger.w("Couldn't connect to $it")
+                                Logger.w("Couldn't connect to $it", exception)
                                 null
                             }
                         }
@@ -87,7 +94,9 @@ class KaktorClusterSystem(
                     }.apply {
                         clusterNodesSockets.putAll(this)
                     }
-                joinCluster()
+                sendMessage {
+                    Join(clusterConfigs.memberName, UUID().toString())
+                }
             }
         Runtime.getRuntime().addShutdownHook(
             object : Thread() {
@@ -99,25 +108,36 @@ class KaktorClusterSystem(
         )
     }
 
-    private suspend fun initiateListener() {
+    private suspend fun initiateCCListener() {
         supervisorScope {
             launch {
-                while (true) {
+                while (isActive) {
                     Logger.i("Waiting for connection")
+                    if (!listening) listening = true
                     val socket = serverSocket.accept()
                     val input = socket.openReadChannel()
                     coroutineScope {
                         launch {
-                            while (true) {
-                                val messageSize = input.readInt()
-                                val message = ByteArray(messageSize)
-                                input.readFully(message)
-                                if (message.isNotEmpty()) {
-                                    launch {
-                                        val decodedMessage = ProtoBuf.decodeFromByteArray<Envelope>(message)
-                                        handleIncomingMessage(decodedMessage)
+                            try {
+                                while (isActive) {
+                                    val messageSize = input.readInt()
+                                    val message = ByteArray(messageSize)
+                                    input.readFully(message)
+                                    if (message.isNotEmpty()) {
+                                        launch {
+                                            val decodedMessage = ProtoBuf.decodeFromByteArray<Envelope>(message)
+                                            handleIncomingMessage(decodedMessage)?.let {
+                                                sendToNode(socket.remoteAddress, it)
+                                            }
+                                        }
                                     }
                                 }
+                            } catch (e: ClosedReceiveChannelException) {
+                                Logger.w("Connection closed unexpectedly", e)
+                            } catch (e: Exception) {
+                                Logger.e("Error while reading from socket", e)
+                            } finally {
+                                socket.close()
                             }
                         }
                     }
@@ -126,39 +146,77 @@ class KaktorClusterSystem(
         }
     }
 
-    private fun handleIncomingMessage(message: Envelope) {
-        when (message.type) {
-            CCMessage::class -> {
-                val ccMessage = message.message as CCMessage
+    private fun handleIncomingMessage(message: Envelope): Envelope? {
+        when (message.message) {
+            is CCMessage -> {
+                val ccMessage = message.message
                 when (ccMessage.message) {
                     is Join -> {
                         val joinMessage = ccMessage.message
-                        Logger.d("Join message received from ${joinMessage.memberName}")
+                        Logger.d("Join message received message: $joinMessage")
+                        val success =
+                            Success(memberName = clusterConfigs.memberName, responseTo = joinMessage.messageId)
+                        return Envelope(
+                            CCMessage(
+                                clusterName = clusterConfigs.clusterName,
+                                message = success
+                            )
+                        )
                     }
 
                     is HealthCheckResponse -> TODO()
                     is Leave -> TODO()
+                    is Success -> {
+                        val successMessage = ccMessage.message
+                        Logger.d("Success message received message: $successMessage")
+                    }
                 }
             }
         }
+
+        return null
     }
 
-    private suspend fun joinCluster() {
-        val joinMessage = Join(clusterConfigs.clusterName, clusterConfigs.memberName)
+    private suspend fun sendMessage(clusterCommandMessage: () -> ClusterCommand) {
+        val joinMessage = clusterCommandMessage()
         clusterNodesSockets.forEach { (_, remoteNode) ->
-            val envelope = Envelope(CCMessage::class, CCMessage(clusterConfigs.clusterName, joinMessage))
-            val message = ProtoBuf.encodeToByteArray(envelope)
-            val messageSize = message.size
-            remoteNode.sendChannel.writeInt(messageSize)
-            remoteNode.sendChannel.writeFully(message)
+            val envelope = Envelope(CCMessage(clusterConfigs.clusterName, joinMessage))
+            sendToNode(remoteNode.socket.remoteAddress, envelope)
+        }
+    }
+
+    private suspend fun sendToNode(node: SocketAddress, message: Envelope) {
+        val remoteNode = clusterNodesSockets[node] ?: return
+        val messageBytes = ProtoBuf.encodeToByteArray(message)
+        val messageSize = messageBytes.size
+        remoteNode.sendChannel.writeInt(messageSize)
+        remoteNode.sendChannel.writeFully(messageBytes)
+        val responseChannel = remoteNode.socket.openReadChannel()
+        val responseSize = responseChannel.readInt()
+        val responseMessage = ByteArray(responseSize)
+        responseChannel.readFully(responseMessage)
+        if (responseMessage.isNotEmpty()) {
+            val decodedMessage = ProtoBuf.decodeFromByteArray<Envelope>(responseMessage)
+            handleIncomingMessage(decodedMessage)?.let {
+                sendToNode(node, it)
+            }
+
         }
     }
 }
 
 suspend fun main() {
+    val hosts = System.getenv("CLUSTER_HOSTS")?.split(",")?.map {
+        val (host, port) = it.split(":")
+        InetSocketAddress(host, port.toInt())
+    } ?: listOf(InetSocketAddress("localhost", listenPortDefault))
+
+    val listenPort = System.getenv("LISTEN_PORT")?.toInt() ?: listenPortDefault
+
     val clusterConfigs =
         KaktorClusterConfigs(
-            clusterHosts = listOf(InetSocketAddress("localhost", 2999)),
+            listenPort = listenPort,
+            clusterHosts = hosts,
             clusterName = "test",
             memberName = "test",
         )

@@ -8,31 +8,34 @@ import kotlinx.serialization.protobuf.ProtoNumber
 
 @Serializable
 sealed interface ClusterCommand {
-    val clusterName: String
     val memberName: String
 }
 
 @Serializable
 data class Join(
+    @ProtoNumber(0)
+    override val memberName: String,
     @ProtoNumber(1)
-    override val clusterName: String,
-    @ProtoNumber(2)
-    override val memberName: String
+    val messageId: String
+) : ClusterCommand
+
+@Serializable
+data class Success(
+    @ProtoNumber(0)
+    override val memberName: String,
+    @ProtoNumber(1)
+    val responseTo: String,
 ) : ClusterCommand
 
 @Serializable
 data class Leave(
-    @ProtoNumber(1)
-    override val clusterName: String,
-    @ProtoNumber(2)
+    @ProtoNumber(0)
     override val memberName: String
 ) : ClusterCommand
 
 @Serializable
 data class HealthCheckResponse(
-    @ProtoNumber(1)
-    override val clusterName: String,
-    @ProtoNumber(2)
+    @ProtoNumber(0)
     override val memberName: String
 ) : ClusterCommand
 
