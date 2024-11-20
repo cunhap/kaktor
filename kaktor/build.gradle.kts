@@ -56,9 +56,14 @@ kotlin {
             dependencies {
                 implementation(libs.kotlinx.serialization.protobuf)
                 implementation(libs.ktor.client.core)
+                implementation(libs.ktor.client.clio)
                 implementation(libs.ktor.server.core)
+                implementation(libs.ktor.server.netty)
                 implementation(libs.ktor.network)
                 implementation(libs.ktor.network.tls)
+                implementation(libs.ktor.server.websockets)
+                implementation(libs.ktor.client.websockets)
+                implementation(libs.ktor.serialize.protobuf)
                 implementation(libs.logback.classic)
             }
         }
@@ -79,4 +84,7 @@ android {
     packaging {
         resources.excludes += "DebugProbesKt.bin"
     }
+}
+dependencies {
+    implementation("io.ktor:ktor-client-cio-jvm:2.3.12")
 }

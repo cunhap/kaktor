@@ -3,64 +3,76 @@
 package org.kaktor.cluster.messaging
 
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
 
 @Serializable
-sealed interface ClusterCommand {
-    val memberName: String
-}
+sealed interface ClusterMessage
 
 @Serializable
+@SerialName("Join")
 data class Join(
-    @ProtoNumber(0)
-    override val memberName: String,
     @ProtoNumber(1)
-    val messageId: String
-) : ClusterCommand
+    val nodeId: String,
+    @ProtoNumber(2)
+    val address: String,
+    @ProtoNumber(3)
+    val port: Int,
+) : ClusterMessage
 
 @Serializable
-data class Success(
-    @ProtoNumber(0)
-    override val memberName: String,
+@SerialName("JoinAck")
+data class JoinAck(
     @ProtoNumber(1)
-    val responseTo: String,
-) : ClusterCommand
+    val nodeId: String,
+    @ProtoNumber(2)
+    val knownNodes: List<NodeInfo>,
+) : ClusterMessage
 
 @Serializable
+@SerialName("Leave")
 data class Leave(
-    @ProtoNumber(0)
-    override val memberName: String
-) : ClusterCommand
-
-@Serializable
-data class HealthCheckResponse(
-    @ProtoNumber(0)
-    override val memberName: String
-) : ClusterCommand
-
-@Serializable
-sealed interface CCManagerMessage {
-
-}
-
-data object OkJoin: CCManagerMessage
-
-@Serializable
-sealed interface CCGossipMessge {
-    val memberName: String
-}
-
-@Serializable
-data class MemberJoined(
     @ProtoNumber(1)
-    override val memberName: String,
-): CCGossipMessge
+    val nodeId: String,
+) : ClusterMessage
 
 @Serializable
-data class MemberLeft(
+@SerialName("Heartbeat")
+data class Heartbeat(
     @ProtoNumber(1)
-    override val memberName: String,
-): CCGossipMessge
+    val nodeId: String,
+) : ClusterMessage
 
+@Serializable
+@SerialName("NewNodeJoined")
+data class NewNodeJoined(
+    @ProtoNumber(1)
+    val node: NodeInfo,
+) : ClusterMessage
 
+@Serializable
+data class ConnectionStart(
+    @ProtoNumber(1)
+    val node: NodeInfo,
+) : ClusterMessage
+
+@Serializable
+@SerialName("ConnectionAck")
+data class ConnectionAck(
+    @ProtoNumber(1)
+    val node: NodeInfo,
+) : ClusterMessage
+
+@Serializable
+@SerialName("NodeInfo")
+data class NodeInfo(
+    @ProtoNumber(1)
+    val nodeId: String,
+    @ProtoNumber(2)
+    val address: String,
+    @ProtoNumber(3)
+    val port: Int,
+    @ProtoNumber(4)
+    var lastHeartbeat: Long = System.currentTimeMillis(),
+)

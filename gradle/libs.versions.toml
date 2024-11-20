@@ -9,7 +9,7 @@ android-minSdk = "24"
 android-compileSdk = "33"
 kermit-logging = "2.0.3"
 kotlinx-serialization = "1.7.3"
-ktor = "3.0.0"
+ktor = "3.0.1"
 logback = "1.5.11"
 
 [libraries]
@@ -21,9 +21,14 @@ kotlinx-uuid-core = { module = "app.softwork:kotlinx-uuid-core", version.ref = "
 nexus-publish = { module = "io.github.gradle-nexus.publish-plugin:io.github.gradle-nexus.publish-plugin.gradle.plugin", version.ref = "nexus-publish" }
 kotlinx-serialization-protobuf = { module = "org.jetbrains.kotlinx:kotlinx-serialization-protobuf", version.ref = "kotlinx-serialization" }
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-network = { module = "io.ktor:ktor-network", version.ref = "ktor" }
 ktor-network-tls = { module = "io.ktor:ktor-network-tls", version.ref = "ktor" }
+ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+ktor-client-clio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+ktor-serialize-protobuf = { module = "io.ktor:ktor-serialization-kotlinx-protobuf", version.ref = "ktor" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 #Test Libraries
