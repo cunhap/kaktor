@@ -33,8 +33,8 @@ suspend fun main() {
             port = listenPort,
             seedNodes = hosts,
         )
-    kAktorClusterSystem.start()
-// Register shutdown hook to stop the node gracefully
+
+    // Register shutdown hook to stop the node gracefully
     Runtime.getRuntime().addShutdownHook(
         Thread {
             runBlocking {
@@ -43,6 +43,8 @@ suspend fun main() {
             exitProcess(0)
         },
     )
+
+    kAktorClusterSystem.start()
 
     // Wait for the application to be stopped
     runBlocking {

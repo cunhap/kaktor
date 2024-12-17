@@ -13,9 +13,12 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
 import org.kaktor.cluster.messaging.ClusterMessage
@@ -42,12 +45,17 @@ class ClusterManager(
     private val seedNodes: List<Pair<String, Int>>,
     private val heartbeatInterval: Long = 5000,
     private val heartbeatTimeout: Long = 15000,
-) {
+) : CoroutineScope {
+    override val coroutineContext = Dispatchers.Default
+    val isRunning = AtomicBoolean(false)
+    private val supervisorJob = SupervisorJob()
     private val myNodeInfo = NodeInfo(nodeId, address, port)
-    private val isRunning = AtomicBoolean(false)
     private val knownNodes = ConcurrentHashMap<String, NodeInfo>()
     private val nodeSessions = ConcurrentHashMap<String, DefaultWebSocketSession?>()
     private val clusterListeners = mutableListOf<ClusterListener>()
+    private val listeningJobs = mutableListOf<Job>()
+    private val heartbeatJobs = mutableListOf<Job>()
+
     private val client =
         HttpClient(CIO) {
             install(ClientWebSockets) {
@@ -62,42 +70,18 @@ class ClusterManager(
     fun configureRouting(routing: Routing) {
         routing.webSocket("/cluster") {
             try {
-                for (frame in incoming) {
-                    if (frame is Frame.Binary) {
-                        val message = deserializeMessage(frame)
-                        handleClusterMessage(message, this)
-                    }
-                }
+                initiateReceivingMessage(this)
             } catch (e: Exception) {
                 logger.error("Error in cluster connection", e)
             }
         }
     }
 
-    suspend fun start() {
-        isRunning.set(true)
-
-        // Join cluster through seed nodes
-        val joinedCluster =
-            CoroutineScope(Dispatchers.IO).async {
-                joinCluster()
-            }
-
-        if (joinedCluster.await()) {
-            logger.info("Joined cluster")
-            // Start heartbeat job
-            CoroutineScope(Dispatchers.Default).launch {
-                while (isRunning.get()) {
-                    logger.info("Starting heartbeats...")
-                    sendHeartbeats()
-                    checkHeartbeats()
-                    delay(heartbeatInterval)
-                }
-            }
-        } else {
-            logger.warn("node=$nodeId, Failed to join cluster")
+    fun start() =
+        launch {
+            isRunning.set(true)
+            joinCluster()
         }
-    }
 
     private suspend fun handleClusterMessage(
         message: ClusterMessage,
@@ -117,15 +101,18 @@ class ClusterManager(
                 broadcastNewNode(newNode)
                 knownNodes[newNode.nodeId] = newNode
                 nodeSessions[newNode.nodeId] = session
-                notifyListeners { it.onNodeJoined(newNode) }
+//                notifyListeners { it.onNodeJoined(newNode) }
             }
 
             is JoinAck -> {
                 message.knownNodes.forEach { nodeInfo ->
                     if (nodeInfo.nodeId != nodeId && !knownNodes.containsKey(nodeInfo.nodeId)) {
+                        logger.info("Received join ack from node ${nodeInfo.nodeId}")
+                        logger.info("Saving node information and starting coroutine for communication")
                         knownNodes[nodeInfo.nodeId] = nodeInfo
                         nodeSessions[message.nodeId] = session
-                        notifyListeners { it.onNodeJoined(nodeInfo) }
+//                        notifyListeners { it.onNodeJoined(nodeInfo) }
+                        initiateReceivingMessage(session)
                     }
                 }
             }
@@ -134,14 +121,14 @@ class ClusterManager(
                 if (message.node.nodeId != nodeId && !knownNodes.containsKey(message.node.nodeId)) {
                     knownNodes[message.node.nodeId] = message.node
                     nodeSessions[message.node.nodeId] = null
-                    notifyListeners { it.onNodeJoined(message.node) }
+//                    notifyListeners { it.onNodeJoined(message.node) }
                 }
             }
 
             is Leave -> {
                 knownNodes.remove(message.nodeId)
                 nodeSessions.remove(message.nodeId)
-                notifyListeners { it.onNodeLeft(message.nodeId) }
+//                notifyListeners { it.onNodeLeft(message.nodeId) }
             }
 
             is Heartbeat -> {
@@ -153,14 +140,46 @@ class ClusterManager(
                 knownNodes[message.node.nodeId] = newNode
                 nodeSessions[message.node.nodeId] = session
                 session.sendSerializedMessage(ConnectionAck(myNodeInfo))
+                initiateReceivingMessage(session)
             }
 
             is ConnectionAck -> {
                 val nodeInfo = message.node
                 knownNodes[nodeInfo.nodeId] = nodeInfo
                 nodeSessions[nodeInfo.nodeId] = session
+                initiateReceivingMessage(session)
             }
         }
+    }
+
+    private suspend fun initiateReceivingMessage(session: DefaultWebSocketSession) {
+        val listeningJob =
+            coroutineScope {
+                launch(supervisorJob) {
+                    while (true) {
+                        for (frame in session.incoming) {
+                            if (frame is Frame.Binary) {
+                                val receivedMessage = deserializeMessage(frame)
+                                handleClusterMessage(receivedMessage, session)
+                            }
+                        }
+                    }
+                }
+            }
+        val heartbeatJob =
+            coroutineScope {
+                launch(supervisorJob) {
+                    while (true) {
+                        sendHeartbeats()
+                        checkHeartbeats()
+                        delay(heartbeatInterval)
+                    }
+                }
+            }
+        listeningJobs.add(listeningJob)
+        this.heartbeatJobs.add(heartbeatJob)
+
+        listOf(listeningJob, heartbeatJob).joinAll()
     }
 
     private suspend fun notifyListeners(action: suspend (ClusterListener) -> Unit) {
@@ -188,7 +207,6 @@ class ClusterManager(
                         handleClusterMessage(response, this)
                     }
                 }
-
                 return true
             } catch (e: Exception) {
                 logger.error("Failed to join through seed $seedAddress:$seedPort: ${e.message}", e)
@@ -256,11 +274,13 @@ class ClusterManager(
         deadNodes.forEach { nodeId ->
             knownNodes.remove(nodeId)
             nodeSessions.remove(nodeId)
-            notifyListeners { it.onNodeLeft(nodeId) }
+//            notifyListeners { it.onNodeLeft(nodeId) }
         }
     }
 
     suspend fun stop() {
+        listeningJobs.forEach { it.cancel() }
+        heartbeatJobs.forEach { it.cancel() }
         isRunning.set(false)
         knownNodes.clear()
         nodeSessions.values.forEach { it?.close() }

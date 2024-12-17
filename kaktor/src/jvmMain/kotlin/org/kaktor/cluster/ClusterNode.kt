@@ -8,7 +8,7 @@ import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
@@ -60,7 +60,6 @@ class ClusterNode(
     private val clusterManager =
         ClusterManager(nodeId, nodeAddress, port, seedNodes, heartbeatInterval, heartbeatTimeout)
     private val messageManager = MessageManager(nodeId)
-    private val stopLatch = CompletableDeferred<Unit>()
 
     private companion object {
         private val logger = LoggerFactory.getLogger(ClusterNode::class.java)
@@ -89,13 +88,15 @@ class ClusterNode(
         server.start(wait = false)
         clusterManager.addListener(messageManager)
         clusterManager.start()
-        // No need to start messageManager separately as its functionality is now in the routing
+        logger.info("Server started")
+        while (clusterManager.isRunning.get()) {
+            delay(1000)
+        }
     }
 
     suspend fun stop() {
         messageManager.stop()
         clusterManager.stop()
         server.stop(1000, 1000)
-        stopLatch.complete(Unit)
     }
 }
