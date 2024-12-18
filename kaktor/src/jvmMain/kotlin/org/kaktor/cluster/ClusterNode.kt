@@ -55,7 +55,7 @@ class ClusterNode(
     port: Int,
     seedNodes: List<Pair<String, Int>>,
     heartbeatInterval: Long = 5000,
-    heartbeatTimeout: Long = 15000,
+    heartbeatTimeout: Long = 150000,
 ) {
     private val clusterManager =
         ClusterManager(nodeId, nodeAddress, port, seedNodes, heartbeatInterval, heartbeatTimeout)

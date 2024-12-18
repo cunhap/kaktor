@@ -18,7 +18,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
 import org.kaktor.cluster.messaging.ClusterMessage
@@ -44,17 +43,17 @@ class ClusterManager(
     private val port: Int,
     private val seedNodes: List<Pair<String, Int>>,
     private val heartbeatInterval: Long = 5000,
-    private val heartbeatTimeout: Long = 15000,
+    private val heartbeatTimeout: Long = 150000,
 ) : CoroutineScope {
     override val coroutineContext = Dispatchers.Default
     val isRunning = AtomicBoolean(false)
     private val supervisorJob = SupervisorJob()
     private val myNodeInfo = NodeInfo(nodeId, address, port)
     private val knownNodes = ConcurrentHashMap<String, NodeInfo>()
-    private val nodeSessions = ConcurrentHashMap<String, DefaultWebSocketSession?>()
+    private val nodeSessions = ConcurrentHashMap<String, DefaultWebSocketSession>()
     private val clusterListeners = mutableListOf<ClusterListener>()
     private val listeningJobs = mutableListOf<Job>()
-    private val heartbeatJobs = mutableListOf<Job>()
+    private var heartbeatJob: Job? = null
 
     private val client =
         HttpClient(CIO) {
@@ -83,6 +82,36 @@ class ClusterManager(
             joinCluster()
         }
 
+    private suspend fun heartbeats() {
+        if (heartbeatJob == null) {
+            heartbeatJob =
+                coroutineScope {
+                    launch(supervisorJob) {
+                        while (true) {
+                            sendHeartbeats()
+                            checkHeartbeats()
+                            delay(heartbeatInterval)
+                            if (knownNodes.isEmpty()) {
+                                break
+                            }
+                        }
+                    }
+                }
+
+            coroutineScope {
+                launch(supervisorJob) {
+                    while (true) {
+                        if (knownNodes.isEmpty()) {
+                            break
+                        }
+                        delay(heartbeatInterval)
+                    }
+                    heartbeatJob = null
+                }
+            }
+        }
+    }
+
     private suspend fun handleClusterMessage(
         message: ClusterMessage,
         session: DefaultWebSocketSession,
@@ -96,39 +125,34 @@ class ClusterManager(
                         nodeId = nodeId,
                         knownNodes = knownNodes.values.toList() + myNodeInfo,
                     )
-                session.sendSerializedMessage(joinAck)
 
-                broadcastNewNode(newNode)
                 knownNodes[newNode.nodeId] = newNode
                 nodeSessions[newNode.nodeId] = session
-//                notifyListeners { it.onNodeJoined(newNode) }
+                session.sendSerializedMessage(joinAck)
+                heartbeats()
+                broadcastNewNode(newNode)
             }
 
             is JoinAck -> {
                 message.knownNodes.forEach { nodeInfo ->
                     if (nodeInfo.nodeId != nodeId && !knownNodes.containsKey(nodeInfo.nodeId)) {
-                        logger.info("Received join ack from node ${nodeInfo.nodeId}")
-                        logger.info("Saving node information and starting coroutine for communication")
                         knownNodes[nodeInfo.nodeId] = nodeInfo
                         nodeSessions[message.nodeId] = session
-//                        notifyListeners { it.onNodeJoined(nodeInfo) }
-                        initiateReceivingMessage(session)
                     }
                 }
+                heartbeats()
+                initiateReceivingMessage(session)
             }
 
             is NewNodeJoined -> {
                 if (message.node.nodeId != nodeId && !knownNodes.containsKey(message.node.nodeId)) {
                     knownNodes[message.node.nodeId] = message.node
-                    nodeSessions[message.node.nodeId] = null
-//                    notifyListeners { it.onNodeJoined(message.node) }
                 }
             }
 
             is Leave -> {
                 knownNodes.remove(message.nodeId)
                 nodeSessions.remove(message.nodeId)
-//                notifyListeners { it.onNodeLeft(message.nodeId) }
             }
 
             is Heartbeat -> {
@@ -136,10 +160,11 @@ class ClusterManager(
             }
 
             is ConnectionStart -> {
-                val newNode = NodeInfo(message.node.nodeId, message.node.nodeId, message.node.port)
+                val newNode = NodeInfo(message.node.nodeId, message.node.address, message.node.port)
                 knownNodes[message.node.nodeId] = newNode
                 nodeSessions[message.node.nodeId] = session
                 session.sendSerializedMessage(ConnectionAck(myNodeInfo))
+                heartbeats()
                 initiateReceivingMessage(session)
             }
 
@@ -147,6 +172,7 @@ class ClusterManager(
                 val nodeInfo = message.node
                 knownNodes[nodeInfo.nodeId] = nodeInfo
                 nodeSessions[nodeInfo.nodeId] = session
+                heartbeats()
                 initiateReceivingMessage(session)
             }
         }
@@ -156,7 +182,7 @@ class ClusterManager(
         val listeningJob =
             coroutineScope {
                 launch(supervisorJob) {
-                    while (true) {
+                    while (session.isActive) {
                         for (frame in session.incoming) {
                             if (frame is Frame.Binary) {
                                 val receivedMessage = deserializeMessage(frame)
@@ -166,30 +192,9 @@ class ClusterManager(
                     }
                 }
             }
-        val heartbeatJob =
-            coroutineScope {
-                launch(supervisorJob) {
-                    while (true) {
-                        sendHeartbeats()
-                        checkHeartbeats()
-                        delay(heartbeatInterval)
-                    }
-                }
-            }
+
         listeningJobs.add(listeningJob)
-        this.heartbeatJobs.add(heartbeatJob)
-
-        listOf(listeningJob, heartbeatJob).joinAll()
-    }
-
-    private suspend fun notifyListeners(action: suspend (ClusterListener) -> Unit) {
-        clusterListeners.forEach { listener ->
-            try {
-                action(listener)
-            } catch (e: Exception) {
-                logger.error("Error notifying listener: ${e.message}", e)
-            }
-        }
+        listeningJob.join()
     }
 
     private suspend fun joinCluster(): Boolean {
@@ -219,7 +224,7 @@ class ClusterManager(
     private suspend fun broadcastNewNode(newNode: NodeInfo) {
         val newNodeMessage = NewNodeJoined(newNode)
 
-        knownNodes.values.forEach { node ->
+        knownNodes.filterKeys { it != newNode.nodeId }.values.forEach { node ->
             try {
                 nodeSessions[node.nodeId]?.sendSerializedMessage(newNodeMessage)
             } catch (e: Exception) {
@@ -228,16 +233,22 @@ class ClusterManager(
         }
     }
 
-    private suspend fun sendHeartbeats() {
+    private fun sendHeartbeats() {
         val heartbeat = Heartbeat(nodeId)
         logger.debug("Sending heartbeats to known nodes {}", knownNodes.keys)
         knownNodes.values.forEach { node ->
+            logger.debug("Sending heartbeat to node {}", node)
             try {
                 if (nodeSessions[node.nodeId] == null || !nodeSessions[node.nodeId]!!.isActive) {
                     logger.info("No session for node ${node.nodeId}, trying to establish connection")
-                    initiateConnection(node)
+                    launch {
+                        initiateConnection(node)
+                    }
+                } else {
+                    launch {
+                        nodeSessions[node.nodeId]?.sendSerializedMessage(heartbeat)
+                    }
                 }
-                nodeSessions[node.nodeId]?.sendSerializedMessage(heartbeat)
             } catch (e: Exception) {
                 logger.error("Failed to send heartbeat to ${node.nodeId}: ${e.message}", e)
             }
@@ -249,24 +260,17 @@ class ClusterManager(
             val connectionStart = ConnectionStart(myNodeInfo)
             logger.info("Connecting to $nodeInfo to start connection, sending message $connectionStart")
             sendSerializedMessage(connectionStart)
-            val response =
-                incoming.receive().let {
-                    if (it is Frame.Binary) {
-                        deserializeMessage(it)
-                    } else {
-                        throw IllegalStateException("Expected binary frame, got $it")
-                    }
-                }
-            handleClusterMessage(response, this)
+            initiateReceivingMessage(this)
         }
     }
 
-    private suspend fun checkHeartbeats() {
+    private fun checkHeartbeats() {
         val now = System.currentTimeMillis()
         val deadNodes = mutableListOf<String>()
 
         knownNodes.values.forEach { node ->
-            if (now - node.lastHeartbeat > heartbeatTimeout) {
+            if ((now - node.lastHeartbeat) > heartbeatTimeout) {
+                logger.debug("Node ${node.nodeId} is dead, now=$now, last heartbeat=${node.lastHeartbeat}")
                 deadNodes.add(node.nodeId)
             }
         }
@@ -274,32 +278,27 @@ class ClusterManager(
         deadNodes.forEach { nodeId ->
             knownNodes.remove(nodeId)
             nodeSessions.remove(nodeId)
-//            notifyListeners { it.onNodeLeft(nodeId) }
         }
     }
 
     suspend fun stop() {
         listeningJobs.forEach { it.cancel() }
-        heartbeatJobs.forEach { it.cancel() }
+        heartbeatJob?.cancel()
         isRunning.set(false)
         knownNodes.clear()
-        nodeSessions.values.forEach { it?.close() }
+        nodeSessions.values.forEach { it.close() }
         nodeSessions.clear()
     }
 }
 
 // Helper function to print byte arrays
-private fun ByteArray.toHexString() = joinToString("") { "%02x".format(it) }
+// private fun ByteArray.toHexString() = joinToString("") { "%02x".format(it) }
 
 private suspend fun DefaultWebSocketSession.sendSerializedMessage(message: ClusterMessage) {
     val serialized = PROTOBUF.encodeToByteArray(ClusterMessage.serializer(), message)
-    logger.debug("Sending serialized message: ${serialized.toHexString()}")
     val frame = Frame.Binary(true, serialized)
     logger.info("Sending message: $message")
     send(frame)
 }
 
-private fun deserializeMessage(frame: Frame.Binary): ClusterMessage {
-    logger.debug("Received binary frame with data: ${frame.data.toHexString()}")
-    return PROTOBUF.decodeFromByteArray(ClusterMessage.serializer(), frame.data)
-}
+private fun deserializeMessage(frame: Frame.Binary): ClusterMessage = PROTOBUF.decodeFromByteArray(ClusterMessage.serializer(), frame.data)
